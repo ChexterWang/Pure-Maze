@@ -55,21 +55,22 @@ class testGame(Widget):
         # items
         self.eatItem = False
         self.gps = False
-        self.breaker = True
+        self.breaker = False
         self.bgReversed = False
         self.dirReversed = False
         self.glitch = False
         self.range = 1 # 0 = narrow, 1 = normal, 2 = broadened
         self.portal = 0 # 0 = normal, 1 = random, 2 = (0, 0)
-        # start update every 1/60 sec
-        clk.schedule_interval(self.update, 1/60)
+        # score
+        self.score = 0
+        # start update event every 1/60 sec
+        self.updateEvent = clk.schedule_interval(self.update, 1/60)
 
   #==  key input detector  =================================================================================================
     def _keyboard_closed(self):
         self._keyboard.unbind(on_key_down=self._on_keyboard_down)
         self._keyboard = None
     def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
-        speed = 0.05 # moving around and check the wall and border
         if not self.game: # in menu key detector
             if keycode[1] == 'right':    self.diffMenu += 1
             elif keycode[1] == 'left':   self.diffMenu -= 1
@@ -84,14 +85,14 @@ class testGame(Widget):
                 if not self.end:
                     if keycode[1] == 'p': self.pause, self.pauseMenu = not self.pause, 0
                 elif self.end:
-                    if not self.loading: self.__init__()
+                    if not self.loading: self.updateEvent.cancel(); self.__init__()
             elif self.pause:
                 if keycode[1] == 'p' or (keycode[1] == 'enter' and self.pauseMenu == 0): self.pause = not self.pause
                 elif keycode[1] == 'up':    self.pauseMenu -= 1
                 elif keycode[1] == 'down':  self.pauseMenu += 1
                 elif keycode[1] == 'enter':
                     if self.pauseMenu == 1:   self.player, self.pause = [0.5, 0.5], False
-                    elif self.pauseMenu == 2: self.__init__()
+                    elif self.pauseMenu == 2: self.updateEvent.cancel(); self.__init__()
                 self.pauseMenu = self.pauseMenu%3
 
   #==  detect touch input  =================================================================================================
@@ -112,13 +113,13 @@ class testGame(Widget):
                 if 350<touch.x<450:
                     if 350<touch.y<390:   self.pause = not self.pause
                     elif 250<touch.y<290: self.player, self.pause = [0.5, 0.5], False
-                    elif 150<touch.y<190: self.__init__()
-        if self.end and not self.loading: self.__init__()
+                    elif 150<touch.y<190: self.updateEvent.cancel(); self.__init__()
+        if self.end and not self.loading: self.updateEvent.cancel(); self.__init__()
     def on_touch_move(self, touch):
         if self.game: self.target, self.touch = [touch.x, touch.y], True
     def on_touch_up(self, touch): self.target, self.touch = [400, 250], False
     def on_touch(self):
-        speed, eatItem = 2e-4, False
+        speed, eatItem = 3e-4, False
         target = [self.player[0]+speed*(self.target[0]-400), self.player[1]+speed*(self.target[1]-250)]
         if self.dirReversed: target = [self.player[0]-speed*(self.target[0]-400), self.player[1]-speed*(self.target[1]-250)]
         cell = (int(self.player[0]), int(self.player[1]))
@@ -137,7 +138,7 @@ class testGame(Widget):
             if target[0] > self.diff-0.1: target[0] = self.diff-0.1
             if target[1] < 0.1: target[1] = 0.1
             if target[0] < 0.1: target[0] = 0.1
-        ## avoid break through; left for be found the bug
+        ## == avoid break through; left for be found the bug ===============================================================
         # 1100 0110 0011 1001 1000 0100 0010 0001
         # corner = [(1, 1), (1, 0), (0, 0), (0, 1)]
         # for i in range(4):
@@ -148,31 +149,33 @@ class testGame(Widget):
         #                 if (self.player[0]+(j/100)*(target[0]-self.player[0])-origin[0])**2 + (self.player[1]+(j/100)*(target[1]-self.player[1])-origin[1])**2 - 0.01 < 1e-4:
         #                     target = [self.player[0]+(j/100)*(target[0]-self.player[0]), self.player[1]+(j/100)*(target[1]-self.player[1])]
         #                     break
+        # ==================================================================================================================
         if not self.loading: # check for item eaten
             pos = (int(self.player[0]), int(self.player[1]))
             if pos in item:
+                # if the cell player in has item to gather
                 if (not grid[pos].getWall()[0] and (target[0]-(cell[0]+0.9))**2+(target[1]-(cell[1]+0.1)) < 0.01)\
                 or (not grid[pos].getWall()[1] and (target[0]-(cell[0]+0.1))**2+(target[1]-(cell[1]+0.1)) < 0.01)\
                 or (not grid[pos].getWall()[2] and (target[0]-(cell[0]+0.1))**2+(target[1]-(cell[1]+0.9)) < 0.01)\
-                or (not grid[pos].getWall()[3] and (target[0]-(cell[0]+0.9))**2+(target[1]-(cell[1]+0.9)) < 0.01): item.remove(pos); eatItem = True
-        if eatItem:
-            self.gps = self.breaker = self.bgReversed = self.dirReversed = self.glitch = False
-            self.range = 1
-            i = rand(0, 93)
-            if i//11 == 0: self.gps = True
-            elif i//11 == 1: self.breaker = True
-            elif i//11 == 2: self.bgReversed = True
-            elif i//11 == 3: self.dirReversed = True
-            elif i//11 == 4: self.glitch = True
-            elif i//11 == 5: self.range = 0
-            elif i//11 == 6: self.range = 1
-            elif i//11 == 7: self.range = 2
-            elif i in [88, 89, 90]: target, self.portal = [0.5, 0.5], 2
-            elif i in [91, 92, 93]: target, self.portal = [rand(0, self.diff-1)+0.5, rand(0, self.diff-1)+0.5], 1
-            print('%s Now State: %d'%(info, i))
-            self.eatItem = True
-            global tE
-            tE = time.time()
+                or (not grid[pos].getWall()[3] and (target[0]-(cell[0]+0.9))**2+(target[1]-(cell[1]+0.9)) < 0.01):
+                    item.remove(pos)
+                    self.gps = self.breaker = self.bgReversed = self.dirReversed = self.glitch = False
+                    self.range = 1
+                    i = rand(0, 84) # determine the possibility of what item player get
+                    if i//11 == 0:   self.gps = True
+                    elif i//11 == 1: self.bgReversed = True
+                    elif i//11 == 2: self.dirReversed = True
+                    elif i//11 == 3: self.glitch = True
+                    elif i//11 == 4: self.range = 0
+                    elif i//11 == 5: self.range = 1
+                    elif i//11 == 6: self.range = 2
+                    elif i in [77, 78]: self.breaker = True
+                    elif i in [79, 80, 81]: target, self.portal = [0.5, 0.5], 1
+                    elif i in [82, 83, 84]: target, self.portal = [rand(0, self.diff-1)+0.5, rand(0, self.diff-1)+0.5], 2
+                    self.eatItem = True
+                    self.score += rand(30, 50)
+                    global tE
+                    tE = time.time()
         self.player = target
 
   #==  update the window  ==================================================================================================
@@ -235,6 +238,8 @@ class testGame(Widget):
             if grid[0, 0].sumWall()==3: item.remove((0, 0))
             while len(item)>int((self.diff*3/10)**2):
                 item.pop(rand(0, len(item)-1))
+            global timeStarted
+            timeStarted = time.time()
             self.loading = False
         self.canvas.add(vec3(0.38, 0.38, 0.38))
         self.canvas.add(Line(points = (600, 50, 750, 50), width = 2))
@@ -252,35 +257,35 @@ class testGame(Widget):
 
   #==  draw player  ========================================================================================================
     def drawPlayer(self):
-        self.canvas.add(vec3(0.74, 0.91, 0.55))
+        self.canvas.add(vec3(0.74, 0.91, 0.55)) # the player itself
         self.canvas.add(Line(circle = (400, 250, 5)))
         if self.range == 0: # narraw finder
-            for i in range(10): # add cover
+            for i in range(10):
                 self.canvas.add(vec3(0.1, 0.11, 0.13, i/10))
                 self.canvas.add(Line(circle = (400, 250, 130+1.5*i), width = 1.5))
                 self.canvas.add(vec3(0.1, 0.11, 0.13))
                 self.canvas.add(Line(circle = (400, 250, 308.35), width = 163.35))
         elif self.range == 1: # normal finder
-            for i in range(10): # add cover
+            for i in range(10):
                 self.canvas.add(vec3(0.1, 0.11, 0.13, i/10))
                 self.canvas.add(Line(circle = (400, 250, 160+1.5*i), width = 1.5))
             self.canvas.add(vec3(0.1, 0.11, 0.13))
             self.canvas.add(Line(circle = (400, 250, 323.35), width = 148.35))
         elif self.range == 2: # broadened finder
-            for i in range(10): # add cover
+            for i in range(10):
                 self.canvas.add(vec3(0.1, 0.11, 0.13, i/10))
                 self.canvas.add(Line(circle = (400, 250, 190+1.5*i), width = 1.5))
             self.canvas.add(vec3(0.1, 0.11, 0.13))
             self.canvas.add(Line(circle = (400, 250, 338.35), width = 133.35))
-        if time.time()-tS < 10:
+        if time.time()-tS < 10: # add instruction
             self.add_widget(Label(text = 'Use mouse to drag player around', pos = (32, 30), size = (200, 30), halign = 'left', valign = 'bottom', font_size = '16sp'))
             self.add_widget(Label(text = 'Press P for pause',               pos = (50, 10), size = (50, 30),  halign = 'left', valign = 'bottom', font_size = '16sp'))
-        if self.gps:
+        if self.gps: # add position info
             self.add_widget(Label(text = '(%.1f, %.1f)'%(self.player[0], self.player[1]), pos = (400, 220), size = (50, 30),  halign = 'left', valign = 'bottom', font_size = '16sp'))
-        if self.eatItem:
+        if self.eatItem: # the pop up of the name of the item
             if time.time()-tE < 3:
-                str1, t = 'Item', time.time()-tE
-                if self.gps:            str = 'GPS on'
+                str1, t = 'Effect', time.time()-tE
+                if self.gps:            str = 'GPS on'; str1 = 'Item'
                 elif self.breaker:      str = 'INVINCIBLE'
                 elif self.bgReversed:   str = 'DEADLY WHITE'
                 elif self.dirReversed:  str = 'PUSH'
@@ -289,11 +294,10 @@ class testGame(Widget):
                 elif self.range == 1 and not self.portal: str = 'NORMALIZATION'
                 elif self.range == 2:   str = 'HORIZON BROADENED'
                 elif self.portal == 1:  str, str1 = 'WELCOME TO FUTURE', 'Portal'
-                elif self.portal == 2:  str, str1 = 'WHERE THE **** AM I?', 'Portal'
+                elif self.portal == 2:  str, str1 = 'WHERE THE F**K AM I?', 'Portal'
                 if t<0.4:       x = -875*(t-0.4)**2
                 elif 0.4<t<2.6: x = 0
                 elif t>2.6:     x = -875*(t-2.6)**2
-                if t>1: self.breaker = False
                 self.canvas.add(vec3(0.0, 0.0, 0.0, 0.8))
                 self.canvas.add(Rectangle(pos = (x, 350), size = (250, 100)))
                 label = Label(text = '%s'%(str),  pos = (100, 375), text_size = (250, 50), size_hint = (1.0, 1.0), halign = 'left', valign = 'middle', font_size = '20sp')
@@ -304,7 +308,13 @@ class testGame(Widget):
                 self.add_widget(label)
             else:
                 self.portal = 0
-                self.eatItem = False
+                self.eatItem = self.breaker = False
+        global timeStarted
+        if not self.loading:
+            label = Label(text = 'score: %5d (+%3dx7)'%(self.score, 666-(time.time()-timeStarted)), pos = (650, 425), text_size = (170, 50), size_hint = (1.0, 1.0), halign = 'right', valign = 'middle', font_size = '16sp')
+            label.bind(size = label.setter('text_size'))
+            self.add_widget(label)
+
   #==  draw map  ===========================================================================================================
     def drawMap(self):
         width, wall = 50, 1 # cell and wall size
@@ -344,7 +354,7 @@ class testGame(Widget):
             for i in item:
                 if i in c:
                     r = ((i[0]-self.player[0])*width+400, (i[1]-self.player[1])*width+250)
-                    if int(time.time()*10)%4 == 0: self.canvas.add(vec3(1.0, 0.58, 0.58))
+                    if int(time.time()*10)%4 == 0:   self.canvas.add(vec3(1.0, 0.58, 0.58))
                     elif int(time.time()*10)%4 == 1: self.canvas.add(vec3(0.62, 1.0, 0.58))
                     elif int(time.time()*10)%4 == 2: self.canvas.add(vec3(0.58, 0.73, 1.0))
                     elif int(time.time()*10)%4 == 3: self.canvas.add(vec3(1.0, 0.58, 0.96))
